@@ -36,3 +36,21 @@ Thumbs.db
 
 # Generated analytics/model artifacts
 static/model_insights/
+
+# ML model artifacts (large binary files)
+ml_artifacts/*.pkl
+ml_artifacts/*.joblib
+
+# Large dataset files
+transactions_dataset.csv
+*.csv
+
+# Static files collected by Django
+staticfiles/
+
+# Render / deployment secrets
+render.yaml
+
+# Migration files (optional: keep if you want schema history)
+# api/migrations/
+
