@@ -1,0 +1,38 @@
+.env
+.env.*
+*.pyc
+__pycache__/
+cache/
+*.sqlite3
+db.sqlite3
+
+# Python virtual environments
+.venv/
+venv/
+env/
+
+# Logs and runtime artifacts
+*.log
+*.pid
+*.tmp
+*.bak
+
+# Python/build artifacts
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+dist/
+build/
+*.egg-info/
+
+# IDE/editor folders
+.vscode/
+.idea/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Generated analytics/model artifacts
+static/model_insights/

@@ -1,0 +1,60 @@
+{% extends "api/base.html" %}
+{% block title %}Transaction Explorer - AML Monitor{% endblock %}
+{% block content %}
+<h1>Transaction Explorer</h1>
+<div class="card">
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <input id="account" placeholder="Account">
+        <input id="country" placeholder="Country">
+        <select id="risk"><option value="">All Risk</option><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select>
+        <input id="min_amount" type="number" step="0.01" placeholder="Min Amount">
+        <input id="max_amount" type="number" step="0.01" placeholder="Max Amount">
+        <label>From <input id="date_from" type="date"></label>
+        <label>To <input id="date_to" type="date"></label>
+        <button onclick="loadExplorer()">Apply</button>
+    </div>
+</div>
+<div class="card">
+    <p id="count">0 records</p>
+    <table>
+        <thead><tr><th>ID</th><th>Account</th><th>Amount</th><th>Risk</th><th>Country</th><th>Status</th><th>Date</th></tr></thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+<script>
+async function loadExplorer() {
+    const q = new URLSearchParams({
+        account: document.getElementById("account").value,
+        country: document.getElementById("country").value,
+        risk: document.getElementById("risk").value,
+        min_amount: document.getElementById("min_amount").value,
+        max_amount: document.getElementById("max_amount").value,
+        date_from: document.getElementById("date_from").value,
+        date_to: document.getElementById("date_to").value
+    });
+    const data = await fetch(`/api/explorer-data/?${q}`).then(r => r.json());
+    document.getElementById("count").textContent = `${data.count} records`;
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
+    for (const item of data.items) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${item.id}</td><td>${item.account_id || "-"}</td><td>${item.amount || "-"}</td><td>${item.risk_level}</td><td>${item.country || "-"}</td><td>${item.case_status}</td><td>${item.created_at}</td>`;
+        tbody.appendChild(tr);
+    }
+}
+
+function startAutoRefresh() {
+    let stopAt = Date.now() + 45000;
+    loadExplorer();
+    const interval = setInterval(() => {
+        if (Date.now() > stopAt) {
+            clearInterval(interval);
+            return;
+        }
+        loadExplorer();
+    }, 2000);
+}
+
+startAutoRefresh();
+</script>
+{% endblock %}

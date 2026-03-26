@@ -1,0 +1,21 @@
+{% extends "api/base.html" %}
+{% block title %}Audit Log - AML Monitor{% endblock %}
+{% block content %}
+<h1>Audit Log</h1>
+<div class="card">
+    <table>
+        <thead><tr><th>Action</th><th>Details</th><th>Actor</th><th>Time</th></tr></thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+<script>
+fetch("/api/audit-logs/").then(r=>r.json()).then(data => {
+    const tbody = document.getElementById("tbody");
+    for (const item of data.items) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${item.action}</td><td>${item.details}</td><td>${item.actor}</td><td>${item.created_at}</td>`;
+        tbody.appendChild(tr);
+    }
+});
+</script>
+{% endblock %}

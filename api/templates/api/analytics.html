@@ -1,0 +1,220 @@
+{% extends "api/base.html" %}
+{% block title %}Analytics - AML Monitor{% endblock %}
+{% block extra_head %}
+<style>
+    .analytics-section-title {
+        font-size: 1.05rem;
+        font-weight: 700;
+        margin: 0 0 14px 0;
+        letter-spacing: -0.02em;
+        color: var(--text);
+    }
+    .analytics-kpi-title { margin-bottom: 12px; }
+    .analytics-chart-desc {
+        margin: -8px 0 12px 0;
+        font-size: 13px;
+        line-height: 1.45;
+        color: #6b7280;
+    }
+    body.dark .analytics-chart-desc { color: #94a3b8; }
+</style>
+{% endblock %}
+{% block content %}
+<h1>Analytics</h1>
+<div class="card">
+    <h2 class="analytics-section-title analytics-kpi-title">Key metrics</h2>
+    <div class="kpis">
+        <div class="kpi"><div>Total Transactions</div><div id="m-total" class="v">0</div></div>
+        <div class="kpi"><div>Suspicious</div><div id="m-suspicious" class="v">0</div></div>
+        <div class="kpi"><div>High Risk</div><div id="m-high" class="v">0</div></div>
+        <div class="kpi"><div>Critical Risk</div><div id="m-critical" class="v">0</div></div>
+    </div>
+</div>
+<div class="card">
+    <h3 class="analytics-section-title">Risk level distribution</h3>
+    <p class="analytics-chart-desc">Share of all scored transactions by model risk band (Low / Medium / High / Critical).</p>
+    <canvas id="riskChart" height="85"></canvas>
+</div>
+ 
+<div class="card">
+    <h3 class="analytics-section-title">Critical transactions by country / location</h3>
+    <p class="analytics-chart-desc">Where the highest number of <strong>Critical</strong> risk transactions originate (Top 10 by sender location).</p>
+    <canvas id="criticalCountryChart" height="140"></canvas>
+</div>
+<div class="card">
+    <h3 class="analytics-section-title">Transaction amount distribution</h3>
+    <p class="analytics-chart-desc">Count of transactions by amount bucket.</p>
+    <canvas id="amountHistChart" height="120"></canvas>
+</div>
+<div class="card">
+    <h3 class="analytics-section-title">Cross-border &amp; currency mismatch</h3>
+    <div id="flagsText"></div>
+</div>
+
+<div class="card">
+    <h3 class="analytics-section-title">Top risky accounts</h3>
+    <p class="analytics-chart-desc">Accounts with the highest count of flagged transactions in the current dataset.</p>
+    <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px;">
+        <div>
+            <h4>Senders</h4>
+            <table><thead><tr><th>Sender</th><th>Flagged</th></tr></thead><tbody id="topSenders"></tbody></table>
+        </div>
+        <div>
+            <h4>Receivers</h4>
+            <table><thead><tr><th>Receiver</th><th>Flagged</th></tr></thead><tbody id="topReceivers"></tbody></table>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <h3 class="analytics-section-title">Top country pairs (flagged)</h3>
+    <p class="analytics-chart-desc">Sender vs receiver bank locations with the most flagged activity.</p>
+    <table><thead><tr><th>From</th><th>To</th><th>Flagged</th></tr></thead><tbody id="topPairs"></tbody></table>
+</div>
+
+<script>
+let charts = [];
+
+function clearCharts() {
+    for (const c of charts) c.destroy();
+    charts = [];
+}
+
+function renderTable(tbodyId, rows, cols) {
+    const tbody = document.getElementById(tbodyId);
+    tbody.innerHTML = "";
+    for (const r of rows) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = cols.map((c) => `<td>${r[c] ?? "-"}</td>`).join("");
+        tbody.appendChild(tr);
+    }
+}
+
+async function loadAnalytics() {
+    const res = await fetch("/api/analytics-data/");
+    if (!res.ok) return;
+    const data = await res.json();
+
+    const m = data.metrics || {};
+    document.getElementById("m-total").textContent = m["Total Transactions"] || 0;
+    document.getElementById("m-suspicious").textContent = m["Suspicious"] || 0;
+    document.getElementById("m-high").textContent = m["High Risk"] || 0;
+    document.getElementById("m-critical").textContent = m["Critical Risk"] || 0;
+
+    clearCharts();
+
+    const palette = [
+        "#22c55e", // green
+        "#3b82f6", // blue
+        "#a855f7", // purple
+        "#f97316", // orange
+        "#ef4444", // red
+        "#14b8a6", // teal
+        "#eab308", // yellow
+    ];
+
+    const riskLabels = Object.keys(data.risk_distribution || {});
+    const riskValues = Object.values(data.risk_distribution || {});
+    charts.push(
+        new Chart(document.getElementById("riskChart"), {
+            type: "pie",
+            data: {
+                labels: riskLabels,
+                datasets: [
+                    {
+                        label: "Risk Distribution",
+                        data: riskValues,
+                        backgroundColor: riskValues.map((_, i) => palette[i % palette.length]),
+                        borderColor: "#0b1220",
+                        borderWidth: 1,
+                    },
+                ],
+            },
+            options: { plugins: { legend: { position: "bottom" } } },
+        })
+    );
+
+    const criticalByCountry = data.critical_by_country || {};
+    const criticalEntries = Object.entries(criticalByCountry)
+        .sort((a, b) => Number(b[1]) - Number(a[1]))
+        .slice(0, 10);
+    const criticalLabels = criticalEntries.map((e) => e[0]);
+    const criticalValues = criticalEntries.map((e) => Number(e[1] ?? 0));
+
+    charts.push(
+        new Chart(document.getElementById("criticalCountryChart"), {
+            type: "bar",
+            data: {
+                labels: criticalLabels,
+                datasets: [
+                    {
+                        label: "Critical count",
+                        data: criticalValues,
+                        backgroundColor: criticalValues.map((_, i) => palette[i % palette.length]),
+                        borderWidth: 1,
+                    },
+                ],
+            },
+            options: {
+                responsive: true,
+                indexAxis: "y",
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, ticks: { precision: 0 } },
+                },
+            },
+        })
+    );
+
+    const amtHist = data.amount_histogram || { labels: [], counts: [] };
+    const amtColors = amtHist.counts.map((_, i) => palette[(i + 3) % palette.length]);
+    charts.push(
+        new Chart(document.getElementById("amountHistChart"), {
+            type: "bar",
+            data: {
+                labels: amtHist.labels,
+                datasets: [
+                    {
+                        label: "Amount distribution (bins)",
+                        data: amtHist.counts,
+                        backgroundColor: amtColors,
+                        borderWidth: 1,
+                    },
+                ],
+            },
+            options: {
+                plugins: { legend: { position: "bottom" } },
+                scales: { y: { beginAtZero: true } },
+            },
+        })
+    );
+
+    const cb = data.cross_border_stats || {};
+    const cm = data.currency_mismatch_stats || {};
+    document.getElementById("flagsText").textContent =
+        `Cross-border: ${cb["Total Cross Border"] || 0} total, ${cb["Suspicious Cross Border"] || 0} suspicious (${Math.round((cb["Cross Border %"] || 0) * 1000)/10}%). ` +
+        `Currency mismatch: ${cm["Mismatch Count"] || 0} total, ${cm["Mismatch Suspicious"] || 0} suspicious (${Math.round((cm["Mismatch %"] || 0) * 1000)/10}%).`;
+
+    renderTable("topSenders", data.top_senders || [], ["Sender_account", "Flagged"]);
+    renderTable("topReceivers", data.top_receivers || [], ["Receiver_account", "Flagged"]);
+    renderTable("topPairs", data.top_country_pairs || [], ["Sender_bank_location", "Receiver_bank_location", "Flagged"]);
+}
+
+function startAutoRefresh() {
+    let stopAt = Date.now() + 120000; // refresh up to 2 minutes
+    const interval = setInterval(async () => {
+        if (Date.now() > stopAt) {
+            clearInterval(interval);
+            return;
+        }
+        await loadAnalytics();
+        const total = Number(document.getElementById("m-total").textContent || 0);
+        if (total > 0) {
+            clearInterval(interval);
+        }
+    }, 2000);
+}
+
+startAutoRefresh();
+</script>
+{% endblock %}

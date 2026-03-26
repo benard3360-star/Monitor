@@ -1,0 +1,298 @@
+{% extends "api/base.html" %}
+{% block title %}Dashboard - AML Monitor{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+<div class="card">
+    <div style="display:flex; gap:10px; flex-wrap:wrap;">
+        <label>Risk
+            <select id="risk-filter">
+                <option value="">All</option>
+                <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+            </select>
+        </label>
+        <label>From <input id="from-date" type="date"></label>
+        <label>To <input id="to-date" type="date"></label>
+    </div>
+</div>
+<div class="kpis">
+    <div class="kpi"><div>Total Transactions</div><div id="m-total" class="v">0</div></div>
+    <div class="kpi"><div>Suspicious</div><div id="m-suspicious" class="v">0</div></div>
+    <div class="kpi"><div>High Risk</div><div id="m-high" class="v">0</div></div>
+    <div class="kpi"><div>Critical Risk</div><div id="m-critical" class="v">0</div></div>
+</div>
+<div class="card"><canvas id="risk-pie" height="120"></canvas></div>
+<div class="card"><canvas id="tx-line" height="100"></canvas></div>
+
+<div class="card">
+    <h3 style="margin-top:0;">Client Query Point</h3>
+    <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
+        <input id="client-account-input" type="text" placeholder="Enter account number" style="min-width:260px;">
+        <button id="client-search-btn" type="button">Search Client</button>
+    </div>
+    <p id="client-search-msg" style="margin:8px 0 0; color:#6b7280;"></p>
+</div>
+
+<div class="kpis" id="client-kpis" style="display:none;">
+    <div class="kpi"><div>Total Cases</div><div id="c-total-cases" class="v">0</div></div>
+    <div class="kpi"><div>Suspicious Cases</div><div id="c-suspicious" class="v">0</div></div>
+    <div class="kpi"><div>Origin Country</div><div id="c-origin" class="v">-</div></div>
+    <div class="kpi"><div>Countries To</div><div id="c-countries" class="v">0</div></div>
+</div>
+
+<div class="card" id="client-amount-card" style="display:none;">
+    <h4 style="margin-top:0;">Client Amount Analytics</h4>
+    <div style="display:flex; gap:24px; flex-wrap:wrap;">
+        <div><strong>Total:</strong> <span id="c-amount-total">0</span></div>
+        <div><strong>Average:</strong> <span id="c-amount-avg">0</span></div>
+        <div><strong>Max:</strong> <span id="c-amount-max">0</span></div>
+    </div>
+</div>
+
+<div class="card" id="client-fields-card" style="display:none;">
+    <h4 style="margin-top:0;">Customer Transaction Details</h4>
+    <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:12px;">
+        <div><strong>Payment Currency:</strong><div id="c-payment-currency">-</div></div>
+        <div><strong>Received Currency:</strong><div id="c-received-currency">-</div></div>
+        <div><strong>Sender Bank Location:</strong><div id="c-sender-bank-location">-</div></div>
+        <div><strong>Receiver Bank Location:</strong><div id="c-receiver-bank-location">-</div></div>
+        <div><strong>Payment Type:</strong><div id="c-payment-type">-</div></div>
+    </div>
+</div>
+
+<div class="card" id="client-risk-card" style="display:none;">
+    <h4 style="margin-top:0;">Client Risk Distribution</h4>
+    <canvas id="client-risk-pie" height="110"></canvas>
+</div>
+
+<div class="card" id="client-trend-card" style="display:none;">
+    <h4 style="margin-top:0;">Client Transaction Trend</h4>
+    <canvas id="client-tx-line" height="100"></canvas>
+</div>
+
+<div class="card" id="client-counterparty-card" style="display:none;">
+    <h4 style="margin-top:0;">Top Destination Accounts</h4>
+    <div id="client-counterparty-list"></div>
+</div>
+
+<div class="card" id="client-recent-card" style="display:none;">
+    <h4 style="margin-top:0;">Recent Client Transactions</h4>
+    <div style="overflow:auto;">
+        <table style="width:100%; border-collapse:collapse;">
+            <thead>
+                <tr>
+                    <th style="text-align:left;">Sender</th>
+                    <th style="text-align:left;">Receiver</th>
+                    <th style="text-align:left;">Amount</th>
+                    <th style="text-align:left;">Country</th>
+                    <th style="text-align:left;">Risk</th>
+                    <th style="text-align:left;">Status</th>
+                    <th style="text-align:left;">Time</th>
+                </tr>
+            </thead>
+            <tbody id="client-recent-body"></tbody>
+        </table>
+    </div>
+</div>
+<script>
+let riskPieChart = null;
+let txLineChart = null;
+let clientRiskChart = null;
+let clientTrendChart = null;
+
+function renderCharts(data) {
+    const riskPieEl = document.getElementById("risk-pie");
+    const txLineEl = document.getElementById("tx-line");
+
+    if (riskPieChart) riskPieChart.destroy();
+    if (txLineChart) txLineChart.destroy();
+
+    riskPieChart = new Chart(riskPieEl, {
+        type: "pie",
+        data: {
+            labels: Object.keys(data.risk_distribution || {}),
+            datasets: [{ data: Object.values(data.risk_distribution || {}) }],
+        },
+    });
+
+    txLineChart = new Chart(txLineEl, {
+        type: "line",
+        data: {
+            labels: (data.transactions_over_time || []).map((x) => x.d),
+            datasets: [
+                {
+                    label: "Transactions",
+                    data: (data.transactions_over_time || []).map((x) => x.count || 0),
+                },
+            ],
+        },
+    });
+}
+
+async function loadDashboard() {
+    const data = await fetch("/api/dashboard-data/").then((r) => r.json());
+    const m = data.metrics || {};
+    document.getElementById("m-total").textContent = m["Total Transactions"] || 0;
+    document.getElementById("m-suspicious").textContent = m["Suspicious"] || 0;
+    document.getElementById("m-high").textContent = m["High Risk"] || 0;
+    document.getElementById("m-critical").textContent = m["Critical Risk"] || 0;
+
+    renderCharts(data);
+}
+
+function startAutoRefresh() {
+    let stopAt = Date.now() + 45000; // refresh for 45 seconds after navigation
+    async function tick() {
+        try {
+            await loadDashboard();
+            const total = Number(document.getElementById("m-total").textContent || 0);
+            if (total > 0) stopAt = 0; // likely finished
+        } catch (e) {
+            // ignore transient fetch errors
+        }
+    }
+
+    tick();
+    const interval = setInterval(async () => {
+        if (Date.now() > stopAt) {
+            clearInterval(interval);
+            return;
+        }
+        await tick();
+    }, 2000);
+}
+
+startAutoRefresh();
+
+function showClientSections(show) {
+    const ids = [
+        "client-kpis",
+        "client-amount-card",
+        "client-fields-card",
+        "client-risk-card",
+        "client-trend-card",
+        "client-counterparty-card",
+        "client-recent-card",
+    ];
+    ids.forEach((id) => {
+        const el = document.getElementById(id);
+        if (el) el.style.display = show ? "" : "none";
+    });
+}
+
+function renderClientCharts(data) {
+    const pieEl = document.getElementById("client-risk-pie");
+    const lineEl = document.getElementById("client-tx-line");
+    if (clientRiskChart) clientRiskChart.destroy();
+    if (clientTrendChart) clientTrendChart.destroy();
+
+    clientRiskChart = new Chart(pieEl, {
+        type: "pie",
+        data: {
+            labels: Object.keys(data.risk_distribution || {}),
+            datasets: [{ data: Object.values(data.risk_distribution || {}) }],
+        },
+    });
+
+    clientTrendChart = new Chart(lineEl, {
+        type: "line",
+        data: {
+            labels: (data.trend_by_day || []).map((x) => x.d),
+            datasets: [{ label: "Transactions", data: (data.trend_by_day || []).map((x) => x.count || 0) }],
+        },
+    });
+}
+
+function renderClientInsights(data) {
+    const summary = data.summary || {};
+    const amounts = summary.amount_summary || {};
+    const fields = data.customer_fields || {};
+
+    document.getElementById("c-total-cases").textContent = summary.total_cases || 0;
+    document.getElementById("c-suspicious").textContent = summary.suspicious_cases || 0;
+    document.getElementById("c-origin").textContent = summary.origin_country || "Unknown";
+    document.getElementById("c-countries").textContent = (summary.countries_transacted_to || []).length || 0;
+    document.getElementById("c-amount-total").textContent = amounts.total ?? 0;
+    document.getElementById("c-amount-avg").textContent = amounts.average ?? 0;
+    document.getElementById("c-amount-max").textContent = amounts.max ?? 0;
+
+    document.getElementById("c-payment-currency").textContent =
+        (fields.payment_currency || []).join(", ") || "-";
+    document.getElementById("c-received-currency").textContent =
+        (fields.received_currency || []).join(", ") || "-";
+    document.getElementById("c-sender-bank-location").textContent =
+        (fields.sender_bank_location || []).join(", ") || "-";
+    document.getElementById("c-receiver-bank-location").textContent =
+        (fields.receiver_bank_location || []).join(", ") || "-";
+    document.getElementById("c-payment-type").textContent =
+        (fields.payment_type || []).map((x) => `${x.type} (${x.count})`).join(", ") || "-";
+
+    const counterpartyList = document.getElementById("client-counterparty-list");
+    const counterparties = data.top_counterparties || [];
+    if (!counterparties.length) {
+        counterpartyList.innerHTML = "<p>No destination account records found.</p>";
+    } else {
+        counterpartyList.innerHTML = counterparties
+            .map((x) => `<div style="padding:4px 0;">${x.receiver_account} - ${x.count} txns</div>`)
+            .join("");
+    }
+
+    const recentBody = document.getElementById("client-recent-body");
+    const rows = data.recent_transactions || [];
+    if (!rows.length) {
+        recentBody.innerHTML = `<tr><td colspan="7">No recent transactions.</td></tr>`;
+    } else {
+        recentBody.innerHTML = rows
+            .slice(0, 20)
+            .map(
+                (r) => `<tr>
+                    <td>${r.sender_account || ""}</td>
+                    <td>${r.receiver_account || ""}</td>
+                    <td>${r.amount ?? ""}</td>
+                    <td>${r.country || "Unknown"}</td>
+                    <td>${r.risk_level || ""}</td>
+                    <td>${r.status || ""}</td>
+                    <td>${r.timestamp || ""}</td>
+                </tr>`
+            )
+            .join("");
+    }
+
+    renderClientCharts(data);
+    showClientSections(true);
+}
+
+async function searchClientInsights() {
+    const msg = document.getElementById("client-search-msg");
+    const account = (document.getElementById("client-account-input").value || "").trim();
+    if (!account) {
+        msg.textContent = "Please enter an account number.";
+        showClientSections(false);
+        return;
+    }
+
+    msg.textContent = "Loading client analytics...";
+    try {
+        const res = await fetch(`/api/client-insights/?account=${encodeURIComponent(account)}`);
+        const data = await res.json();
+        if (!res.ok || !data.found) {
+            msg.textContent = data.message || data.error || "Client not found.";
+            showClientSections(false);
+            return;
+        }
+        msg.textContent = `Client found: ${data.account_query}`;
+        renderClientInsights(data);
+    } catch (e) {
+        msg.textContent = "Could not load client analytics right now.";
+        showClientSections(false);
+    }
+}
+
+document.getElementById("client-search-btn").addEventListener("click", searchClientInsights);
+document.getElementById("client-account-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") {
+        e.preventDefault();
+        searchClientInsights();
+    }
+});
+</script>
+{% endblock %}

@@ -1,0 +1,75 @@
+{% extends "api/base.html" %}
+{% block title %}Chatbot - AML Monitor{% endblock %}
+{% block content %}
+<h1>AML Assistant Chatbot</h1>
+<div class="card" style="max-width: 980px;">
+    <div style="display:grid; grid-template-columns: 1fr; gap: 12px;">
+        <div style="display:flex; gap:8px; align-items:center;">
+            <input id="chat-input" style="flex:1;" placeholder="Ask about threshold, suspicious counts, top risky accounts, case statuses, audit..." />
+            <button id="chat-send">Ask</button>
+        </div>
+        <div id="chat-log" style="background: rgba(37,99,235,0.04); border: 1px solid #e5e7eb; border-radius: 10px; padding: 12px; height: 420px; overflow:auto;"></div>
+    </div>
+</div>
+
+<script>
+const input = document.getElementById("chat-input");
+const sendBtn = document.getElementById("chat-send");
+const log = document.getElementById("chat-log");
+
+function addBubble(role, text) {
+    const wrap = document.createElement("div");
+    wrap.style.margin = "8px 0";
+    const isUser = role === "user";
+    wrap.innerHTML = `
+        <div style="font-weight:700; font-size:12px; color:${isUser ? '#1d4ed8' : '#374151'};">${isUser ? 'You' : 'Assistant'}</div>
+        <div style="white-space: pre-wrap; background:${isUser ? 'rgba(37,99,235,0.14)' : '#fff'}; border:1px solid #e5e7eb; padding:10px; border-radius:10px;">
+            ${text}
+        </div>
+    `;
+    log.appendChild(wrap);
+    log.scrollTop = log.scrollHeight;
+}
+
+async function ask() {
+    const message = input.value.trim();
+    if (!message) return;
+    input.value = "";
+    addBubble("user", message);
+    const placeholder = document.createElement("div");
+    placeholder.style.margin = "8px 0";
+    placeholder.innerHTML = `<div style="font-weight:700; font-size:12px; color:#374151;">Assistant</div>
+        <div style="white-space: pre-wrap; background:#fff; border:1px solid #e5e7eb; padding:10px; border-radius:10px;">Thinking...</div>`;
+    log.appendChild(placeholder);
+    log.scrollTop = log.scrollHeight;
+
+    try {
+        const res = await fetch("/api/chat/ask/", {
+            method: "POST",
+            headers: {"Content-Type":"application/json"},
+            body: JSON.stringify({message})
+        });
+        const data = await res.json();
+        const ans = data.answer || data.error || "No response.";
+        placeholder.innerHTML = `
+            <div style="font-weight:700; font-size:12px; color:#374151;">Assistant</div>
+            <div style="white-space: pre-wrap; background:#fff; border:1px solid #e5e7eb; padding:10px; border-radius:10px;">${ans}</div>
+        `;
+    } catch (e) {
+        placeholder.innerHTML = `
+            <div style="font-weight:700; font-size:12px; color:#374151;">Assistant</div>
+            <div style="white-space: pre-wrap; background:#fff; border:1px solid #e5e7eb; padding:10px; border-radius:10px;">Error contacting chat.</div>
+        `;
+    }
+    log.scrollTop = log.scrollHeight;
+}
+
+sendBtn.addEventListener("click", ask);
+input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") ask();
+});
+
+addBubble("assistant", "Ask a question about the latest ingested dataset. Example: “What is the threshold?” or “How many suspicious transactions are there?”");
+</script>
+{% endblock %}
+

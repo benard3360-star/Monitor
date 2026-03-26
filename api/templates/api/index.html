@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Transaction Monitoring Dashboard</title>
+<style>
+table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+th, td { border: 1px solid black; padding: 8px; text-align: center; }
+th { background-color: #f2f2f2; }
+.dashboard { display: flex; gap: 20px; margin-top: 20px; }
+.metric { border: 1px solid #ccc; padding: 10px; width: 150px; text-align: center; }
+</style>
+</head>
+<body>
+<h2>Upload Transaction CSV</h2>
+<input type="file" id="fileInput">
+<button onclick="uploadFile()">Upload & Predict</button>
+
+<div class="dashboard">
+    <div class="metric" id="total_txn">Total Transactions: 0</div>
+    <div class="metric" id="suspicious">Suspicious: 0</div>
+    <div class="metric" id="high_risk">High Risk: 0</div>
+    <div class="metric" id="critical_risk">Critical Risk: 0</div>
+</div>
+
+<h3>Alerts Table:</h3>
+<table id="alertsTable">
+    <thead>
+        <tr>
+            <th>Probability</th>
+            <th>Risk_Level</th>
+            <th>Rules</th>
+            <th>Flagged</th>
+            <th>Alert</th>
+            <th>Case_Status</th>
+        </tr>
+    </thead>
+    <tbody></tbody>
+</table>
+
+<script>
+async function uploadFile() {
+    const input = document.getElementById('fileInput');
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const response = await fetch('/api/predict/', {
+        method: 'POST',
+        body: formData
+    });
+
+    const data = await response.json();
+
+    // Update dashboard
+    document.getElementById('total_txn').innerText = 'Total Transactions: ' + data.dashboard['Total Transactions'];
+    document.getElementById('suspicious').innerText = 'Suspicious: ' + data.dashboard['Suspicious'];
+    document.getElementById('high_risk').innerText = 'High Risk: ' + data.dashboard['High Risk'];
+    document.getElementById('critical_risk').innerText = 'Critical Risk: ' + data.dashboard['Critical Risk'];
+
+    // Populate alerts table
+    const tbody = document.querySelector('#alertsTable tbody');
+    tbody.innerHTML = '';
+    data.alerts.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${row.Probability.toFixed(3)}</td>
+                        <td>${row.Risk_Level}</td>
+                        <td>${row.Rules.join(', ')}</td>
+                        <td>${row.Flagged}</td>
+                        <td>${row.Alert}</td>
+                        <td>${row.Case_Status}</td>`;
+        tbody.appendChild(tr);
+    });
+}
+</script>
+</body>
+</html>

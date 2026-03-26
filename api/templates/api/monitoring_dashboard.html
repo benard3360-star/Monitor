@@ -1,0 +1,263 @@
+{% extends "api/base.html" %}
+{% block title %}User monitoring — FinGuard{% endblock %}
+{% block extra_head %}
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+<style>
+    /* When chat squeezes the page, keep KPI cards readable. */
+    body.chat-open #kpiRow {
+        display: flex;
+        flex-wrap: nowrap;
+        overflow-x: auto;
+        overflow-y: hidden;
+        gap: 12px;
+        padding-bottom: 6px;
+        margin-bottom: 1rem;
+        scrollbar-width: thin;
+    }
+    body.chat-open #kpiRow > [class*="col-"] {
+        flex: 0 0 180px;
+        max-width: 180px;
+        width: 180px;
+        padding-left: 0;
+        padding-right: 0;
+    }
+    .monitoring-filters .form-label {
+        font-size: 12px;
+        color: #6b7280;
+        margin-bottom: 4px;
+        font-weight: 600;
+    }
+    .monitoring-filters .form-select,
+    .monitoring-filters .form-control {
+        min-height: 38px;
+    }
+    .monitoring-filters .bulk-box {
+        background: rgba(245, 158, 11, 0.08);
+        border: 1px solid rgba(245, 158, 11, 0.35);
+        border-radius: 10px;
+        padding: 10px;
+    }
+</style>
+{% endblock %}
+{% block content %}
+<div class="container-fluid px-3">
+    <ul class="nav nav-pills mb-3 gap-2">
+        <li class="nav-item"><span class="nav-link active">Monitoring</span></li>
+        <li class="nav-item"><a class="nav-link" href="{% url 'case_list_page' %}">Case management</a></li>
+        <li class="nav-item"><a class="nav-link" href="/dashboard/">Executive dashboard</a></li>
+        <li class="nav-item"><a class="nav-link" href="/audit-log/">Audit log</a></li>
+    </ul>
+
+    <div class="row g-3 mb-4" id="kpiRow">
+        <div class="col-6 col-md-4 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">In view</div><div class="fs-4 fw-bold" id="kpiTotal">—</div></div></div></div>
+        <div class="col-6 col-md-4 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Assigned</div><div class="fs-4 fw-bold" id="kpiAssigned">—</div></div></div></div>
+        <div class="col-6 col-md-4 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Pending review</div><div class="fs-4 fw-bold" id="kpiPending">—</div></div></div></div>
+        <div class="col-6 col-md-4 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Confirmed</div><div class="fs-4 fw-bold" id="kpiConfirmed">—</div></div></div></div>
+        <div class="col-6 col-md-4 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">False positive</div><div class="fs-4 fw-bold" id="kpiFp">—</div></div></div></div>
+        <div class="col-6 col-md-4 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Escalated</div><div class="fs-4 fw-bold" id="kpiEsc">—</div></div></div></div>
+        <div class="col-6 col-md-4 col-lg-2"><div class="card border-0 shadow-sm h-100"><div class="card-body py-3"><div class="text-muted small">Resolved</div><div class="fs-4 fw-bold" id="kpiResolved">—</div></div></div></div>
+    </div>
+
+    <div class="card shadow-sm mb-3">
+        <div class="card-body">
+            <div class="row g-3 align-items-end monitoring-filters">
+                <div class="col-12 col-sm-6 col-lg-2">
+                    <label class="form-label small mb-0">Risk</label>
+                    <select id="fRisk" class="form-select form-select-sm">
+                        <option value="">All</option>
+                        <option>Low</option><option>Medium</option><option>High</option><option>Critical</option>
+                    </select>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-2">
+                    <label class="form-label small mb-0">Status</label>
+                    <select id="fStatus" class="form-select form-select-sm">
+                        <option value="">All</option>
+                        <option value="UNDER_REVIEW">Under review</option>
+                        <option value="CONFIRMED">Confirmed suspicious</option>
+                        <option value="FALSE_POSITIVE">False positive</option>
+                        <option value="ESCALATED">Escalated</option>
+                        <option value="RESOLVED">Resolved</option>
+                    </select>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-2">
+                    <label class="form-label small mb-0">Created from</label>
+                    <input type="date" id="fDateFrom" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 col-sm-6 col-lg-2">
+                    <label class="form-label small mb-0">Created to</label>
+                    <input type="date" id="fDateTo" class="form-control form-control-sm">
+                </div>
+                <div class="col-12 col-sm-6 col-lg-2">
+                    <label class="form-label small mb-0 d-block">&nbsp;</label>
+                    <div class="form-check mt-2">
+                        <input class="form-check-input" type="checkbox" id="fMine">
+                        <label class="form-check-label small" for="fMine">Assigned to me</label>
+                    </div>
+                </div>
+                <div class="col-12 col-sm-6 col-lg-2 d-grid">
+                    <label class="form-label small mb-0 d-block">&nbsp;</label>
+                    <button type="button" class="btn btn-primary btn-sm" id="btnApply">Apply filters</button>
+                </div>
+                {% if is_aml_admin %}
+                <div class="col-12">
+                    <div class="bulk-box">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-12 col-md-4 col-lg-3">
+                                <label class="form-label small mb-0">Assign selected to</label>
+                                <select id="bulkUser" class="form-select form-select-sm">
+                                    <option value="">Select user…</option>
+                                </select>
+                            </div>
+                            <div class="col-12 col-md-auto">
+                                <button type="button" class="btn btn-warning btn-sm" id="btnBulkAssign">Bulk assign</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="table-responsive">
+            <table class="table table-hover table-sm align-middle mb-0">
+                <thead class="table-light">
+                    <tr>
+                        {% if is_aml_admin %}<th><input type="checkbox" id="chkAll"></th>{% endif %}
+                        <th>ID</th>
+                        <th>Probability</th>
+                        <th>Risk</th>
+                        <th>Status</th>
+                        <th>Sender</th>
+                        <th>Receiver</th>
+                        <th>Txn time</th>
+                        <th>Rules</th>
+                        <th>Assignee</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody id="tbody"></tbody>
+            </table>
+        </div>
+        <div class="card-footer d-flex justify-content-between align-items-center py-2">
+            <span class="small text-muted" id="pageInfo"></span>
+            <div>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnPrev">Previous</button>
+                <button type="button" class="btn btn-sm btn-outline-secondary" id="btnNext">Next</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+{% block extra_js %}
+<script>
+const IS_ADMIN = {{ is_aml_admin|yesno:"true,false" }};
+function csrf() {
+    const m = document.cookie.match(/csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[1]) : "";
+}
+let nextUrl = null;
+let prevUrl = null;
+
+async function loadSummary() {
+    const r = await fetch("/api/v1/alerts/summary/", { credentials: "same-origin" });
+    if (!r.ok) return;
+    const d = await r.json();
+    document.getElementById("kpiTotal").textContent = d.total_in_view ?? "0";
+    document.getElementById("kpiAssigned").textContent = d.total_assigned ?? "0";
+    document.getElementById("kpiPending").textContent = d.pending_review ?? "0";
+    document.getElementById("kpiConfirmed").textContent = d.confirmed_suspicious ?? "0";
+    document.getElementById("kpiFp").textContent = d.false_positives ?? "0";
+    document.getElementById("kpiEsc").textContent = d.escalated ?? "0";
+    document.getElementById("kpiResolved").textContent = d.resolved ?? "0";
+}
+
+function filterQuery() {
+    const p = new URLSearchParams();
+    const risk = document.getElementById("fRisk").value;
+    const st = document.getElementById("fStatus").value;
+    const df = document.getElementById("fDateFrom").value;
+    const dt = document.getElementById("fDateTo").value;
+    if (risk) p.set("risk_level", risk);
+    if (st) p.set("case_status", st);
+    if (df) p.set("date_from", df);
+    if (dt) p.set("date_to", dt);
+    if (document.getElementById("fMine").checked) p.set("assigned_to_me", "1");
+    return p.toString();
+}
+
+async function loadAlerts(url) {
+    const base = url || ("/api/v1/alerts/?" + filterQuery());
+    const r = await fetch(base, { credentials: "same-origin" });
+    if (!r.ok) { document.getElementById("tbody").innerHTML = "<tr><td colspan='10' class='text-danger'>Failed to load alerts.</td></tr>"; return; }
+    const data = await r.json();
+    const items = data.results || data;
+    nextUrl = data.next || null;
+    prevUrl = data.previous || null;
+    document.getElementById("pageInfo").textContent = data.count != null ? ("Showing " + items.length + " of " + data.count) : (items.length + " alerts");
+    const tb = document.getElementById("tbody");
+    tb.innerHTML = "";
+    for (const row of items) {
+        const tr = document.createElement("tr");
+        const rules = (row.rules || "").substring(0, 80) + ((row.rules || "").length > 80 ? "…" : "");
+        const chk = IS_ADMIN ? `<td><input type="checkbox" class="row-chk" data-id="${row.id}"></td>` : "";
+        tr.innerHTML = chk +
+            `<td>${row.id}</td><td>${Number(row.probability).toFixed(4)}</td><td>${row.risk_level}</td><td>${row.case_status}</td>` +
+            `<td class="small">${row.account_id || "—"}</td><td class="small">${row.receiver_account || "—"}</td>` +
+            `<td class="small">${row.txn_timestamp ? row.txn_timestamp.slice(0, 16) : "—"}</td>` +
+            `<td class="small text-muted" title="${(row.rules || "").replace(/"/g, "&quot;")}">${rules || "—"}</td>` +
+            `<td class="small">${row.assignee_username || row.assigned_to || "—"}</td>` +
+            `<td><a class="btn btn-sm btn-outline-primary" href="/cases/${row.id}/">Open case</a></td>`;
+        tb.appendChild(tr);
+    }
+    if (IS_ADMIN) {
+        document.getElementById("chkAll").onchange = () => {
+            document.querySelectorAll(".row-chk").forEach(c => { c.checked = document.getElementById("chkAll").checked; });
+        };
+    }
+}
+
+async function loadUsers() {
+    if (!IS_ADMIN) return;
+    const r = await fetch("/api/v1/users/", { credentials: "same-origin" });
+    if (!r.ok) return;
+    const d = await r.json();
+    const sel = document.getElementById("bulkUser");
+    sel.innerHTML = "<option value=''>Select user…</option>";
+    for (const u of d.results || []) {
+        const o = document.createElement("option");
+        o.value = u.id;
+        o.textContent = u.username;
+        sel.appendChild(o);
+    }
+}
+
+document.getElementById("btnApply").onclick = () => { loadSummary(); loadAlerts(null); };
+document.getElementById("btnNext").onclick = () => { if (nextUrl) loadAlerts(nextUrl); };
+document.getElementById("btnPrev").onclick = () => { if (prevUrl) loadAlerts(prevUrl); };
+
+if (IS_ADMIN) {
+    document.getElementById("btnBulkAssign").onclick = async () => {
+        const uid = document.getElementById("bulkUser").value;
+        const ids = [...document.querySelectorAll(".row-chk:checked")].map(c => parseInt(c.dataset.id, 10));
+        if (!uid || !ids.length) { alert("Select alerts and a user."); return; }
+        const r = await fetch("/api/v1/alerts/bulk_assign/", {
+            method: "POST",
+            credentials: "same-origin",
+            headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+            body: JSON.stringify({ alert_ids: ids, user_id: parseInt(uid, 10) }),
+        });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { alert(j.error || "Bulk assign failed"); return; }
+        alert("Updated " + (j.updated || 0) + " case(s). In-app notifications sent.");
+        loadSummary();
+        loadAlerts(null);
+    };
+}
+
+loadSummary();
+loadAlerts(null);
+if (IS_ADMIN) loadUsers();
+</script>
+{% endblock %}

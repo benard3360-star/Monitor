@@ -1,0 +1,39 @@
+{% extends "api/base.html" %}
+{% block title %}Case Management - AML Monitor{% endblock %}
+{% block content %}
+<h1>Case Management</h1>
+<div class="card"><p>Each alert is managed as a case with assignment and status tracking.</p></div>
+<div class="card">
+    <table>
+        <thead><tr><th>Case ID</th><th>Account</th><th>Amount</th><th>Risk</th><th>Status</th><th>Assigned</th></tr></thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+<script>
+async function loadCases() {
+    const res = await fetch("/api/cases-data/");
+    const data = await res.json();
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
+    for (const item of data.items) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${item.id}</td><td>${item.account_id || "-"}</td><td>${item.amount || "-"}</td><td>${item.risk_level}</td><td>${item.case_status}</td><td>${item.assigned_to || "-"}</td>`;
+        tbody.appendChild(tr);
+    }
+}
+
+function startAutoRefresh() {
+    let stopAt = Date.now() + 45000;
+    loadCases();
+    const interval = setInterval(() => {
+        if (Date.now() > stopAt) {
+            clearInterval(interval);
+            return;
+        }
+        loadCases();
+    }, 2000);
+}
+
+startAutoRefresh();
+</script>
+{% endblock %}

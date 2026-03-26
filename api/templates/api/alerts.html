@@ -1,0 +1,91 @@
+{% extends "api/base.html" %}
+{% block title %}Alerts - AML Monitor{% endblock %}
+{% block content %}
+<h1>Alerts</h1>
+<div class="card" style="display:flex; gap:10px; align-items:end; flex-wrap:wrap;">
+    <label>Risk
+        <select id="risk"><option value="">All</option><option>Low</option><option>Medium</option><option>High</option><option>Critical</option></select>
+    </label>
+    <label>Status
+        <select id="status">
+            <option value="">All</option>
+            <option value="UNDER_REVIEW">Under Review</option>
+            <option value="CONFIRMED">Confirmed</option>
+            <option value="FALSE_POSITIVE">False Positive</option>
+            <option value="ESCALATED">Escalated</option>
+            <option value="RESOLVED">Resolved</option>
+        </select>
+    </label>
+    <button onclick="loadAlerts()">Apply</button>
+</div>
+<div class="card">
+    <table>
+        <thead><tr><th>ID</th><th>Probability</th><th>Risk</th><th>Status</th><th>Assigned</th><th>Actions</th></tr></thead>
+        <tbody id="tbody"></tbody>
+    </table>
+</div>
+<script>
+async function loadAlerts() {
+    const q = new URLSearchParams({
+        risk: document.getElementById("risk").value,
+        status: document.getElementById("status").value
+    });
+    const data = await fetch(`/api/alerts-data/?${q}`).then(r => r.json());
+    const tbody = document.getElementById("tbody");
+    tbody.innerHTML = "";
+    for (const item of data.items) {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `<td>${item.id}</td><td>${item.probability}</td><td>${item.risk_level}</td><td>${item.case_status}</td><td>${item.assigned_to || "-"}</td>`;
+
+        const td = document.createElement("td");
+        if (item.id && item.id > 0) {
+            const approve = document.createElement("button");
+            approve.textContent = "Approve";
+            approve.onclick = () => act(item.id, "approve");
+
+            const reject = document.createElement("button");
+            reject.textContent = "Reject";
+            reject.onclick = () => act(item.id, "reject");
+
+            td.appendChild(approve);
+            td.appendChild(document.createTextNode(" "));
+            td.appendChild(reject);
+        } else {
+            const approve = document.createElement("button");
+            approve.textContent = "Approve";
+            approve.disabled = true;
+            const reject = document.createElement("button");
+            reject.textContent = "Reject";
+            reject.disabled = true;
+            td.appendChild(approve);
+            td.appendChild(document.createTextNode(" "));
+            td.appendChild(reject);
+        }
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+    }
+}
+async function act(id, action) {
+    await fetch(`/api/alerts/${id}/action/`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({action})
+    });
+    loadAlerts();
+}
+
+function startAutoRefresh() {
+    let stopAt = Date.now() + 45000; // refresh for 45 seconds after navigation
+    loadAlerts();
+    const interval = setInterval(() => {
+        if (Date.now() > stopAt) {
+            clearInterval(interval);
+            return;
+        }
+        loadAlerts();
+    }, 2000);
+}
+
+startAutoRefresh();
+</script>
+{% endblock %}
